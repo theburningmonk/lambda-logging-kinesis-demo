@@ -1,0 +1,119 @@
+service: cloudwatch-logs-to-logzio
+
+plugins:
+  - serverless-pseudo-parameters
+  - serverless-iam-roles-per-function
+
+custom:
+  stage: ${opt:stage, self:provider.stage}
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  stage: dev
+  region: eu-west-1
+  versionFunctions: false
+
+functions:
+  ship-logs-to-logzio:
+    handler: functions/ship-logs/handler.handler
+    description: Sends CloudWatch logs from Kinesis to Logz.io
+    memorySize: 128
+    events:
+      - stream:
+          type: kinesis
+          arn:
+            Fn::GetAtt:
+              - LogsKinesisStream
+              - Arn
+    environment:
+      logstash_host: <INSERT VALUE HERE>
+      logstash_port: <INSERT VALUE HERE>
+      token: <INSERT VALUE HERE>
+
+  set-retention:
+    handler: functions/set-retention/handler.handler
+    description: Sets the log retention policy to the specified no. of days
+    memorySize: 128
+    environment:
+      retention_days: "7"
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - "logs:PutRetentionPolicy"
+        Resource: "*"
+    events:
+      - cloudwatchEvent:
+          event:
+            source:
+              - aws.logs
+            detail-type:
+              - AWS API Call via CloudTrail
+            detail:
+              eventSource:
+                - logs.amazonaws.com
+              eventName:
+                - CreateLogGroup
+
+  subscribe:
+    handler: functions/subscribe/handler.handler
+    description: Subscribe logs to the Kinesis stream
+    memorySize: 128
+    environment:
+      arn: 
+        Fn::GetAtt:
+          - LogsKinesisStream
+          - Arn
+      prefix: "/aws/lambda"
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - "logs:PutSubscriptionFilter"
+        Resource: "*"
+    events:
+      - cloudwatchEvent:
+          event:
+            source:
+              - aws.logs
+            detail-type:
+              - AWS API Call via CloudTrail
+            detail:
+              eventSource:
+                - logs.amazonaws.com
+              eventName:
+                - CreateLogGroup
+
+resources:
+  Resources:
+    LogsKinesisStream:
+      Type: AWS::Kinesis::Stream
+      Properties: 
+        Name: ${self:service}-${self:custom.stage}-logs
+        ShardCount: 1
+
+    CloudWatchLogsRole:
+      Type: AWS::IAM::Role
+      Properties: 
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement: 
+            - Effect: Allow
+              Principal: 
+                Service: 
+                  - logs.amazonaws.com
+              Action: 
+                - sts:AssumeRole
+        Policies:
+          - PolicyName: root
+            PolicyDocument: 
+              Version: "2012-10-17"
+              Statement: 
+                - Effect: Allow
+                  Action: 
+                    - kinesis:PutRecords
+                    - kinesis:PutRecord
+                  Resource:
+                    Fn::GetAtt:
+                      - LogsKinesisStream
+                      - Arn
+        RoleName: ${self:service}-${self:custom.stage}-cloudwatchrole
