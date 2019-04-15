@@ -11,7 +11,7 @@ provider:
   name: aws
   runtime: nodejs8.10
   stage: dev
-  region: eu-west-1
+  region: ${env:AWS_REGION}
   versionFunctions: false
 
 functions:
@@ -27,16 +27,16 @@ functions:
               - LogsKinesisStream
               - Arn
     environment:
-      logstash_host: <INSERT VALUE HERE>
-      logstash_port: <INSERT VALUE HERE>
-      token: <INSERT VALUE HERE>
+      logstash_host: ${env:LOGSTASH_HOST, 'listener.logz.io'}
+      logstash_port: ${env:LOGSTASH_PORT, '5050'}
+      token: ${env:LOGSTASH_TOKEN}
 
   set-retention:
     handler: functions/set-retention/handler.handler
     description: Sets the log retention policy to the specified no. of days
     memorySize: 128
     environment:
-      retention_days: "7"
+      retention_days: ${env:LOG_GROUP_RETENTION, '7'}
     iamRoleStatements:
       - Effect: "Allow"
         Action:
@@ -60,15 +60,23 @@ functions:
     description: Subscribe logs to the Kinesis stream
     memorySize: 128
     environment:
-      arn: 
+      arn:
         Fn::GetAtt:
           - LogsKinesisStream
+          - Arn
+      role_arn:
+        Fn::GetAtt:
+          - CloudWatchLogsRole
           - Arn
       prefix: "/aws/lambda"
     iamRoleStatements:
       - Effect: "Allow"
         Action:
           - "logs:PutSubscriptionFilter"
+        Resource: "*"
+      - Effect: "Allow"
+        Action:
+          - "iam:PassRole"
         Resource: "*"
     events:
       - cloudwatchEvent:
@@ -87,29 +95,29 @@ resources:
   Resources:
     LogsKinesisStream:
       Type: AWS::Kinesis::Stream
-      Properties: 
+      Properties:
         Name: ${self:service}-${self:custom.stage}-logs
-        ShardCount: 1
+        ShardCount: ${env:KINESIS_SHARD_COUNT, '1'}
 
     CloudWatchLogsRole:
       Type: AWS::IAM::Role
-      Properties: 
+      Properties:
         AssumeRolePolicyDocument:
           Version: "2012-10-17"
-          Statement: 
+          Statement:
             - Effect: Allow
-              Principal: 
-                Service: 
+              Principal:
+                Service:
                   - logs.amazonaws.com
-              Action: 
+              Action:
                 - sts:AssumeRole
         Policies:
           - PolicyName: root
-            PolicyDocument: 
+            PolicyDocument:
               Version: "2012-10-17"
-              Statement: 
+              Statement:
                 - Effect: Allow
-                  Action: 
+                  Action:
                     - kinesis:PutRecords
                     - kinesis:PutRecord
                   Resource:
