@@ -1,0 +1,19 @@
+Resources:
+    LogsKinesisStream:
+      Type: AWS::SQS::Queue
+      Properties: 
+ #       ContentBasedDeduplication: Boolean
+        DelaySeconds: 0
+ #       FifoQueue: Boolean
+ #       KmsDataKeyReusePeriodSeconds: Integer
+ #       KmsMasterKeyId: String
+ #       MaximumMessageSize: 256    #The default value is 262,144 (256 KiB)
+ #       MessageRetentionPeriod: 7  #The default value is 345,600 seconds (4 days)
+        QueueName: ${self:service}-PulseFailureMsg-Queue-${self:custom.stage}
+        ReceiveMessageWaitTimeSeconds: 0
+        RedrivePolicy:
+          deadLetterTargetArn : arn:aws:sqs:us-east-1:003299485621:dead-letter-queue
+          maxReceiveCount : 3
+#        Tags: 
+#          - Tag
+        VisibilityTimeout: 30
